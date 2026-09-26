@@ -27,6 +27,20 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Generate gallery manifest from /images
+        run: |
+          mkdir -p images
+          node -e "
+            const fs = require('fs');
+            const dir = 'images';
+            const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+            const files = fs.readdirSync(dir)
+              .filter(f => exts.includes(require('path').extname(f).toLowerCase()))
+              .sort((a, b) => a.localeCompare(b));
+            fs.writeFileSync(dir + '/manifest.json', JSON.stringify(files, null, 2));
+            console.log('Gallery manifest:', files);
+          "
+
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
