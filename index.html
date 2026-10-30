@@ -598,40 +598,8 @@
       </a>
     </div>
 
-    <div class="video-grid">
-      <div>
-        <div class="video-frame">
-          <iframe
-            src="https://www.youtube.com/embed/xX_yWsnSwnw?rel=0"
-            title="Conference Presentation"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
-            loading="lazy">
-          </iframe>
-        </div>
-        <div class="video-meta">
-          <span>Conference Talk &amp; Technical Keynote</span>
-          <a href="https://www.youtube.com/watch?v=xX_yWsnSwnw" target="_blank" rel="noopener">Watch on YouTube ↗</a>
-        </div>
-      </div>
-
-      <div>
-        <div class="video-frame">
-          <iframe
-            src="https://www.youtube.com/embed/W-a7hzp1pp0?rel=0"
-            title="Data Science Round Table"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
-            loading="lazy">
-          </iframe>
-        </div>
-        <div class="video-meta">
-          <span>Data Science Round Table — JAIN University</span>
-          <a href="https://www.youtube.com/watch?v=W-a7hzp1pp0" target="_blank" rel="noopener">Watch on YouTube ↗</a>
-        </div>
-      </div>
+    <div class="video-grid" id="videoGrid">
+      <!-- populated at runtime from videos.csv -->
     </div>
   </div>
 </section>
@@ -867,6 +835,99 @@
     document.getElementById('galleryScroll').scrollBy({ left: 280, behavior: 'smooth' });
   });
 
+  // ---------------------------------------------------------------
+  // VIDEOS — fully automatic.
+  // Reads videos.csv (columns: url,title) and builds one embed per
+  // row. To add a video: add a line to videos.csv and push.
+  // Accepts youtu.be/…, youtube.com/watch?v=…, /shorts/…, /embed/…
+  // or even just the 11-character video ID.
+  // ---------------------------------------------------------------
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Minimal CSV parser (handles quoted fields, commas inside quotes, CRLF)
+  function parseCSV(text) {
+    const rows = []; let row = [], field = '', inQ = false;
+    text = text.replace(/^\uFEFF/, '');
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (c === '"') inQ = false;
+        else field += c;
+      } else if (c === '"') inQ = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some(x => x.trim() !== '')) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+    row.push(field);
+    if (row.some(x => x.trim() !== '')) rows.push(row);
+    return rows;
+  }
+
+  function youtubeId(input) {
+    input = (input || '').trim();
+    if (/^[\w-]{11}$/.test(input)) return input;
+    try {
+      const u = new URL(input);
+      const host = u.hostname.replace(/^www\.|^m\./, '');
+      if (host === 'youtu.be') return u.pathname.slice(1).split('/')[0] || null;
+      if (host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
+        if (u.searchParams.get('v')) return u.searchParams.get('v');
+        const m = u.pathname.match(/^\/(?:embed|shorts|live|v)\/([\w-]{11})/);
+        if (m) return m[1];
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  async function renderVideos() {
+    const grid = document.getElementById('videoGrid');
+    if (!grid) return;
+    let rows = [];
+    try {
+      const res = await fetch('videos.csv', { cache: 'no-store' });
+      if (res.ok) rows = parseCSV(await res.text());
+    } catch (e) { /* csv not available */ }
+
+    // Skip header row if first cell is "url"
+    if (rows.length && rows[0][0].trim().toLowerCase() === 'url') rows.shift();
+
+    const items = rows
+      .map(r => ({ id: youtubeId(r[0]), title: (r[1] || '').trim(), caption: (r[2] || '').trim() }))
+      .filter(v => v.id);
+
+    if (!items.length) { grid.style.display = 'none'; return; }
+
+    grid.innerHTML = items.map(v => {
+      const title = escapeHtml(v.title || 'YouTube video');
+      const caption = escapeHtml(v.caption || v.title || 'Watch on YouTube');
+      return `
+      <div>
+        <div class="video-frame">
+          <iframe
+            src="https://www.youtube.com/embed/${v.id}?rel=0"
+            title="${title}"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+            loading="lazy">
+          </iframe>
+        </div>
+        <div class="video-meta">
+          <span>${caption}</span>
+          <a href="https://www.youtube.com/watch?v=${v.id}" target="_blank" rel="noopener">Watch on YouTube ↗</a>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  renderVideos();
   renderGallery();
 </script>
 </body>
